@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Deaf & Mute Translator — English ↔ Kannada</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;background:linear-gradient(135deg,#f0f7ff,#f7fff0);margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .card{width:960px;max-width:96%;background:#fff;border-radius:12px;box-shadow:0 8px 30px rgba(20,20,50,0.08);padding:22px}
+  h1{margin:0 0 6px;font-size:22px}
+  .controls{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}
+  select,input,button{padding:10px;border-radius:8px;border:1px solid #cbd5e1;font-size:14px}
+  input{flex:1;min-width:200px}
+  button.primary{background:#2563eb;color:#fff;border:none;cursor:pointer}
+  button.ghost{background:transparent;border:1px solid #cbd5e1}
+  .output{display:flex;gap:18px;align-items:center;margin-top:14px}
+  .text-box{flex:1}
+  #resultText{font-size:18px;color:#0f172a;margin:6px 0}
+  #signImage{max-width:280px;border-radius:10px;box-shadow:0 6px 18px rgba(2,6,23,0.08);display:none}
+  .small{font-size:12px;color:#475569}
+  footer{margin-top:14px;font-size:13px;color:#475569}
+  .row{display:flex;gap:8px;align-items:center}
+  label{font-size:13px;color:#334155}
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>🌐 Deaf & Mute Translator — English ↔ Kannada</h1>
+    <div class="small">Type or speak, get instant translation + sign image. Backend-powered.</div>
+
+    <div class="controls">
+      <label for="mode">Mode</label>
+      <select id="mode">
+        <option value="en-kn">English → Kannada</option>
+        <option value="kn-en">Kannada → English</option>
+      </select>
+
+      <input id="textInput" placeholder="Type English (or Kannada) here — or press 🎤 to speak" />
+      <button onclick="startListening()" title="Speak">🎤 Speak</button>
+      <button class="primary" id="translateBtn" onclick="translateText()">🌍 Translate</button>
+      <button class="ghost" onclick="clearAll()">🧹 Clear</button>
+    </div>
+
+    <div class="output">
+      <div class="text-box">
+        <div class="row small"><strong>Result:</strong></div>
+        <div id="resultText">Translation will appear here...</div>
+        <div class="small" id="tokens"></div>
+      </div>
+      <div>
+        <img id="signImage" src="" alt="Sign image" />
+      </div>
+    </div>
+
+    <footer>
+      <div>Backend API: <code>POST /translate</code></div>
+      <div style="margin-top:6px">Instructions: Run backend (node server.js) and open this file in browser. If you see "Translation not found", add phrases to backend dictionary.</div>
+    </footer>
+  </div>
+
+<script>
+// helpers
+function normalizeText(t){ return (t||'').normalize('NFC').trim().toLowerCase(); }
+
+async function translateText(){
+  const inputRaw = document.getElementById('textInput').value || '';
+  const mode = document.getElementById('mode').value;
+  const resultEl = document.getElementById('resultText');
+  const img = document.getElementById('signImage');
+  const tokensEl = document.getElementById('tokens');
+
+  if(!inputRaw.trim()){ resultEl.textContent='Please enter text or speak.'; img.style.display='none'; return; }
+
+  const payload = { text: inputRaw.trim(), mode };
+
+  try{
+    const res = await fetch('http://localhost:5000/translate', {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)
+    });
+    const data = await res.json();
+    resultEl.textContent = data.translation || 'Translation not found';
+    tokensEl.textContent = data.note || '';
+    if(data.signImage){
+      img.src = 'http://localhost:5000/signs/' + data.signImage;
+      img.style.display = 'block';
+      img.onerror = ()=>{ img.style.display='none'; };
+    } else { img.style.display='none'; }
+
+    // speak
+    if(data.translation && data.translation !== 'Translation not found'){
+      const u = new SpeechSynthesisUtterance(data.translation);
+      u.lang = mode === 'en-kn' ? 'kn-IN' : 'en-US';
+      speechSynthesis.cancel(); speechSynthesis.speak(u);
+    }
+  }catch(e){
+    resultEl.textContent = 'Error: Cannot reach backend. Start backend (node server.js).';
+    img.style.display='none';
+    console.error(e);
+  }
+}
+
+function clearAll(){ document.getElementById('textInput').value=''; document.getElementById('resultText').textContent='Translation will appear here...'; document.getElementById('signImage').style.display='none'; }
+
+// speech
+function startListening(){
+  const mode = document.getElementById('mode').value;
+  const lang = mode==='en-kn' ? 'en-US' : 'kn-IN';
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRecognition){ alert("Speech recognition not supported in this browser."); return; }
+  const r = new SpeechRecognition(); r.lang = lang; r.interimResults=false; r.maxAlternatives=1;
+  r.onresult = (ev)=>{ document.getElementById('textInput').value = ev.results[0][0].transcript; };
+  r.onerror = ()=>{ alert('Speech recognition error'); };
+  r.start();
+}
+
+// allow Enter to translate
+document.getElementById('textInput').addEventListener('keydown', function(e){ if(e.key==='Enter'){ translateText(); } });
+</script>
+</body>
+</html>
